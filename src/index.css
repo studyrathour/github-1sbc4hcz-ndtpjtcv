@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom progress slider styles */
+.progress-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.progress-slider::-webkit-slider-track {
+  background: transparent;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #4c479c;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.progress-slider::-webkit-slider-thumb:hover {
+  background: #3d3578;
+  transform: scale(1.2);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+.progress-slider::-moz-range-track {
+  background: transparent;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.progress-slider::-moz-range-thumb {
+  background: #4c479c;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Volume slider styles */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #4b5563;
+  cursor: pointer;
+  outline: none;
+  border-radius: 2px;
+}
+
+.volume-slider::-webkit-slider-track {
+  background: #4b5563;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ffffff;
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-moz-range-track {
+  background: #4b5563;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.volume-slider::-moz-range-thumb {
+  background: #ffffff;
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #6B7280;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Animation utilities */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes bounce {
+  0%, 20%, 53%, 80%, 100% { transform: translate3d(0,0,0); }
+  40%, 43% { transform: translate3d(0,-30px,0); }
+  70% { transform: translate3d(0,-15px,0); }
+  90% { transform: translate3d(0,-4px,0); }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(45deg, #3B82F6, #8B5CF6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass effect */
+.glass {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Video player container */
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+}
+
+.video-container iframe,
+.video-container video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+  .video-container {
+    padding-bottom: 75%; /* More square aspect ratio for mobile */
+  }
+  
+  /* Mobile-specific styles */
+  .mobile-portrait-layout {
+    flex-direction: column;
+  }
+  
+  .mobile-video-player {
+    height: 250px !important;
+    width: 100% !important;
+  }
+  
+  .mobile-overlay {
+    height: calc(100vh - 250px) !important;
+    width: 100% !important;
+  }
+}
+
+/* Landscape mode for mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-video-player {
+    height: 100vh !important;
+    width: 100% !important;
+  }
+  
+  .mobile-overlay {
+    height: 100vh !important;
+    width: 320px !important;
+  }
+}
+
+/* Focus states */
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #3B82F6;
+  ring-opacity: 0.5;
+}
+
+/* Disabled states */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hide Bolt branding */
+body > div:nth-child(4),
+div[class*="bolt"],
+div[id*="bolt"],
+*[data-bolt],
+*[class*="made-in-bolt"],
+*[id*="made-in-bolt"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Transitions */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
