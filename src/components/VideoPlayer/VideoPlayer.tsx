@@ -14,7 +14,7 @@ interface VideoPlayerProps {
   onSendMessage?: (message: string) => void;
   // Doubt props
   doubts?: DoubtQuestion[];
-  onAskDoubt?: (question: string, videoTime: number) => void;
+  onAskDoubt?: (question: string, videoFrame: string, videoTime: number) => void;
   isDoubtLoading?: boolean;
   // Poll props
   activePoll?: Poll | null;
@@ -35,7 +35,7 @@ declare global {
   }
 }
 
-export function VideoPlayer({ 
+export default function VideoPlayer({ 
   videoUrl, 
   onTimeUpdate, 
   chatMessages = [],
@@ -82,12 +82,8 @@ export function VideoPlayer({
   const [isMobile, setIsMobile] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   
-  // Double tap functionality
-  const lastTapRef = useRef<number>(0);
-  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [lastClickTime, setLastClickTime] = useState(0);
 
-  // Detect mobile and orientation
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -110,7 +106,6 @@ export function VideoPlayer({
     onTimeUpdate?.(currentTime);
   }, [currentTime, onTimeUpdate]);
 
-  // Auto-hide controls after 5 seconds
   useEffect(() => {
     if (showControls && isPlaying) {
       if (controlsTimeout) {
@@ -128,7 +123,7 @@ export function VideoPlayer({
   }, [showControls, isPlaying]);
 
   const handleMouseMove = () => {
-    if (isMobile) return; // Don't handle mouse events on mobile
+    if (isMobile) return;
     setShowControls(true);
     if (controlsTimeout) {
       clearTimeout(controlsTimeout);
@@ -138,7 +133,7 @@ export function VideoPlayer({
   };
 
   const handleMouseLeave = () => {
-    if (isMobile) return; // Don't handle mouse events on mobile
+    if (isMobile) return;
     if (controlsTimeout) {
       clearTimeout(controlsTimeout);
     }
@@ -149,7 +144,6 @@ export function VideoPlayer({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Only handle keyboard events on desktop
     if (isMobile) return;
     
     switch (e.key) {
@@ -178,19 +172,15 @@ export function VideoPlayer({
     }
   };
 
-  // Handle mobile video clicks
   const handleVideoClick = (e: React.MouseEvent) => {
     if (!isMobile) {
-      // Desktop: single click to play/pause
       togglePlay();
       return;
     }
 
-    // Mobile: handle single tap to show/hide controls and double tap for skip
     const now = Date.now();
     
     if (now - lastClickTime < 300) {
-      // Double tap - handle skip functionality
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const videoWidth = rect.width;
@@ -203,7 +193,6 @@ export function VideoPlayer({
         skipForward();
       }
     } else {
-      // Single tap - show controls and start auto-hide timer
       setShowControls(true);
       if (controlsTimeout) {
         clearTimeout(controlsTimeout);
@@ -225,6 +214,11 @@ export function VideoPlayer({
       setActiveOverlay(overlay);
       setIsOverlayOpen(true);
     }
+  };
+
+  const handleDoubtSubmitted = (question: string, videoTime: number) => {
+    const frame = captureCurrentFrame();
+    onAskDoubt?.(question, frame, videoTime);
   };
 
   const handlePlaybackSpeedChange = (speed: number) => {
@@ -261,7 +255,6 @@ export function VideoPlayer({
     <div className={`w-full h-screen bg-black ${
       isMobile && isPortrait ? 'flex flex-col' : 'flex'
     }`}>
-      {/* Video Container */}
       <div
         ref={containerRef}
         className={`relative bg-black overflow-hidden focus:outline-none transition-all duration-300 ${
@@ -278,12 +271,10 @@ export function VideoPlayer({
         onKeyDown={handleKeyDown}
         tabIndex={0}
       >
-        {/* Video Element */}
         <div className="w-full h-full bg-black">
           {renderVideo()}
         </div>
 
-        {/* Watermark */}
         <div className="absolute top-2 left-2 pointer-events-none z-20">
           <img 
             src="/image.png" 
@@ -295,42 +286,42 @@ export function VideoPlayer({
             }}
           />
         </div>
+        
+        <div className="absolute inset-0">
+            <VideoControls
+              isVisible={showControls || !isPlaying}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              volume={volume}
+              isMuted={isMuted}
+              isFullscreen={isFullscreen}
+              isMobile={isMobile}
+              isPortrait={isPortrait}
+              onPlayPause={togglePlay}
+              onSkipForward={skipForward}
+              onSkipBackward={skipBackward}
+              onSeek={seek}
+              onVolumeChange={changeVolume}
+              onMute={toggleMute}
+              onFullscreen={toggleFullscreen}
+              onChatToggle={() => handleOverlayToggle('chat')}
+              onDoubtToggle={() => handleOverlayToggle('doubt')}
+              onPollToggle={() => handleOverlayToggle('poll')}
+              isChatActive={activeOverlay === 'chat'}
+              isDoubtActive={activeOverlay === 'doubt'}
+              isPollActive={activeOverlay === 'poll'}
+              mode={mode}
+              chatCount={chatMessages.length}
+              doubtCount={doubts.length}
+              hasActivePoll={!!activePoll}
+              onPlaybackSpeedChange={handlePlaybackSpeedChange}
+              onVideoQualityChange={handleVideoQualityChange}
+              videoType={videoType}
+              videoUrl={videoUrl}
+            />
+        </div>
 
-        {/* Custom Controls */}
-        <VideoControls
-          isVisible={showControls || !isPlaying}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          volume={volume}
-          isMuted={isMuted}
-          isFullscreen={isFullscreen}
-          isMobile={isMobile}
-          isPortrait={isPortrait}
-          onPlayPause={togglePlay}
-          onSkipForward={skipForward}
-          onSkipBackward={skipBackward}
-          onSeek={seek}
-          onVolumeChange={changeVolume}
-          onMute={toggleMute}
-          onFullscreen={toggleFullscreen}
-          onChatToggle={() => handleOverlayToggle('chat')}
-          onDoubtToggle={() => handleOverlayToggle('doubt')}
-          onPollToggle={() => handleOverlayToggle('poll')}
-          isChatActive={activeOverlay === 'chat'}
-          isDoubtActive={activeOverlay === 'doubt'}
-          isPollActive={activeOverlay === 'poll'}
-          mode={mode}
-          chatCount={chatMessages.length}
-          doubtCount={doubts.length}
-          hasActivePoll={!!activePoll}
-          onPlaybackSpeedChange={handlePlaybackSpeedChange}
-          onVideoQualityChange={handleVideoQualityChange}
-          videoType={videoType}
-          videoUrl={videoUrl}
-        />
-
-        {/* Click overlay for YouTube videos */}
         {videoType === 'youtube' && (
           <div 
             className="absolute inset-0 z-10 cursor-pointer"
@@ -340,7 +331,6 @@ export function VideoPlayer({
         )}
       </div>
 
-      {/* Side Overlays - Available in fullscreen too */}
       {isOverlayOpen && (
         <div className={`bg-gray-900 ${
           isFullscreen
@@ -349,7 +339,6 @@ export function VideoPlayer({
               ? 'w-full flex-1 border-t border-gray-700'
               : 'w-80 h-screen border-l border-gray-700'
         }`}>
-          {/* Chat Overlay - Only in live mode */}
           {activeOverlay === 'chat' && mode === 'live' && (
             <ChatOverlay
               messages={chatMessages}
@@ -361,11 +350,10 @@ export function VideoPlayer({
             />
           )}
 
-          {/* Doubt Overlay - Available in both modes */}
           {activeOverlay === 'doubt' && (
             <DoubtOverlay
               doubts={doubts}
-              onAskDoubt={onAskDoubt || (() => {})}
+              onAskDoubt={handleDoubtSubmitted}
               currentVideoTime={currentTime}
               isLoading={isDoubtLoading}
               onClose={() => {
@@ -375,7 +363,6 @@ export function VideoPlayer({
             />
           )}
 
-          {/* Poll Overlay - Only in live mode */}
           {activeOverlay === 'poll' && mode === 'live' && (
             <PollOverlay
               activePoll={activePoll}
@@ -393,7 +380,6 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Fullscreen overlay backdrop */}
       {isFullscreen && isOverlayOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-40"

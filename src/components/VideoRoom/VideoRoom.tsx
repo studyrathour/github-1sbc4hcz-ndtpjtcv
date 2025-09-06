@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { VideoPlayer } from '../VideoPlayer/VideoPlayer';
+import VideoPlayer from '../VideoPlayer/VideoPlayer';
 import { NameModal } from '../NameModal/NameModal';
 import { FirebaseService } from '../../services/firebaseService';
 import { generateResponse } from '../../config/gemini';
@@ -24,7 +24,7 @@ export function VideoRoom({ mode }: VideoRoomProps) {
   
   const [userName, setUserName] = useState<string>('');
   const [userId, setUserId] = useState<string>('');
-  const [showNameModal, setShowNameModal] = useState(false); // Don't show by default
+  const [showNameModal, setShowNameModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -35,13 +35,11 @@ export function VideoRoom({ mode }: VideoRoomProps) {
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastPollTime, setLastPollTime] = useState(0);
-  const [sessionStartTime] = useState(Date.now()); // Capture when the session starts
+  const [sessionStartTime] = useState(Date.now());
   
-  // Handle URL decoding more robustly
   const decodedVideoUrl = React.useMemo(() => {
     if (!videoUrl) return '';
     try {
-      // Handle multiple levels of encoding
       let decoded = videoUrl;
       while (decoded !== decodeURIComponent(decoded)) {
         decoded = decodeURIComponent(decoded);
@@ -55,14 +53,12 @@ export function VideoRoom({ mode }: VideoRoomProps) {
   
   const roomId = `${mode}-${btoa(decodedVideoUrl || '').slice(0, 10)}`;
 
-  // Initialize user data from localStorage
   useEffect(() => {
     const storedName = UserStorage.getUserName();
     const storedUserId = UserStorage.getUserId();
     
     setUserId(storedUserId);
     
-    // Only show name modal for live mode
     if (mode === 'live') {
       if (storedName) {
         setUserName(storedName);
@@ -71,7 +67,6 @@ export function VideoRoom({ mode }: VideoRoomProps) {
         setShowNameModal(true);
       }
     } else {
-      // For recorded mode, use stored name or generate anonymous name
       if (storedName) {
         setUserName(storedName);
       } else {
@@ -99,11 +94,9 @@ export function VideoRoom({ mode }: VideoRoomProps) {
       return;
     }
 
-    // Subscribe to real-time updates based on mode
     const unsubscribes: (() => void)[] = [];
 
     if (mode === 'live') {
-      // Live mode: subscribe to all features
       unsubscribes.push(
         FirebaseService.subscribeToChatMessages(roomId, setChatMessages, sessionStartTime),
         FirebaseService.subscribeToPolls(roomId, (newPolls) => {
@@ -113,7 +106,6 @@ export function VideoRoom({ mode }: VideoRoomProps) {
         }),
         FirebaseService.subscribeToLeaderboard(roomId, (students) => {
           setLeaderboard(students);
-          // Show congratulations when leaderboard updates
           if (students.length > 0) {
             setShowCongratulations(true);
           }
@@ -121,10 +113,8 @@ export function VideoRoom({ mode }: VideoRoomProps) {
       );
     }
 
-    // Subscribe to doubts for both modes, but filter by user for privacy
     unsubscribes.push(
       FirebaseService.subscribeToDoubtQuestions(roomId, (allDoubts) => {
-        // Only show doubts from the current user for privacy
         const userDoubts = allDoubts.filter(doubt => doubt.userId === userId);
         setDoubts(userDoubts);
       })
@@ -135,7 +125,6 @@ export function VideoRoom({ mode }: VideoRoomProps) {
     };
   }, [roomId, videoUrl, navigate, mode, showNameModal, sessionStartTime, userId]);
 
-  // Auto-generate polls in live mode (simulate AI detection)
   useEffect(() => {
     if (mode === 'live' && !showNameModal && currentTime > 0 && currentTime - lastPollTime >= 120 && Math.floor(currentTime) % 120 === 0) {
       generateRandomPoll();
@@ -175,23 +164,17 @@ export function VideoRoom({ mode }: VideoRoomProps) {
   };
 
   const handleSendChatMessage = async (message: string) => {
-    if (mode !== 'live') return; // Only allow chat in live mode
+    if (mode !== 'live') return;
 
     const newMessage: Omit<ChatMessage, 'id'> = {
       userId,
       username: userName,
       message,
-      timestamp: Date.now() // Will be overridden by serverTimestamp in Firebase
+      timestamp: Date.now()
     };
 
-    try {
-      await FirebaseService.addChatMessage(roomId, newMessage);
-      console.log('Message sent successfully');
-    } catch (error) {
-      console.error('Failed to send message:', error);
-    }
+    await FirebaseService.addChatMessage(roomId, newMessage);
 
-    // Generate AI response if message looks like a question
     if (message.includes('?') || message.toLowerCase().includes('what') || message.toLowerCase().includes('how')) {
       try {
         const aiResponse = await generateResponse(`Answer this student question about the educational content: "${message}"`);
@@ -199,7 +182,7 @@ export function VideoRoom({ mode }: VideoRoomProps) {
           userId: 'ai',
           username: 'AI Assistant',
           message: aiResponse,
-          timestamp: Date.now(), // Will be overridden by serverTimestamp in Firebase
+          timestamp: Date.now(),
           isAI: true
         };
         await FirebaseService.addChatMessage(roomId, aiMessage);
@@ -208,37 +191,32 @@ export function VideoRoom({ mode }: VideoRoomProps) {
       }
     }
   };
-
-  const handleAddComment = async (comment: string, videoTime: number) => {
-    // Comments are not used in the current implementation
-    // This function is kept for potential future use
-  };
-
-  const handleAskDoubt = async (question: string, videoTime: number) => {
+  
+  const handleAskDoubt = async (question: string, videoFrame: string, videoTime: number) => {
     setIsLoading(true);
     
     const newDoubt: Omit<DoubtQuestion, 'id'> = {
       userId,
       username: userName,
       question,
+      videoFrame,
       videoTime,
-      timestamp: Date.now() // Will be overridden by serverTimestamp in Firebase
+      timestamp: Date.now()
     };
 
     try {
-      // Generate AI response
       const prompt = `
-        A student is asking about educational content at timestamp ${Math.floor(videoTime / 60)}:${(videoTime % 60).toFixed(0).padStart(2, '0')}.
-        Question: "${question}"
-        
-        Please provide a helpful educational response that addresses their question.
+        A student has a doubt about the educational content shown in the attached image, which was captured at timestamp ${formatTime(videoTime)}.
+        The student's question is: "${question}"
+
+        Analyze the image and the question. Provide a helpful and clear answer in Hinglish (a mix of Hindi and simple English words, e.g., "Aapka question bahut accha hai..."). The tone should be like a friendly teacher.
       `;
       
-      const aiResponse = await generateResponse(prompt);
+      const aiResponse = await generateResponse(prompt, videoFrame);
       newDoubt.aiResponse = aiResponse;
     } catch (error) {
       console.error('Error generating AI response:', error);
-      newDoubt.aiResponse = 'I apologize, but I encountered an error processing your question. Please try asking again.';
+      newDoubt.aiResponse = 'Sorry, AI ko question samajhne me problem ho rahi hai. Please try again.';
     }
 
     await FirebaseService.addDoubtQuestion(roomId, newDoubt);
@@ -246,11 +224,10 @@ export function VideoRoom({ mode }: VideoRoomProps) {
   };
 
   const handleSubmitPollResponse = async (pollId: string, answer: number) => {
-    if (mode !== 'live') return; // Only allow polls in live mode
+    if (mode !== 'live') return;
 
     await FirebaseService.updatePollResponse(roomId, pollId, userId, answer);
     
-    // Update student score
     const poll = polls.find(p => p.id === pollId);
     if (poll && poll.correctAnswer === answer) {
       const currentStudent = leaderboard.find(s => s.id === userId);
@@ -261,8 +238,13 @@ export function VideoRoom({ mode }: VideoRoomProps) {
       await FirebaseService.updateStudentScore(roomId, userId, newScore, newCorrectAnswers, newTotalQuestions);
     }
   };
+  
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
 
-  // Show name modal only for live mode
   if (showNameModal && mode === 'live') {
     return (
       <div className="min-h-screen bg-gray-900">
@@ -288,7 +270,6 @@ export function VideoRoom({ mode }: VideoRoomProps) {
 
   return (
     <div className="min-h-screen bg-black overflow-hidden">
-      {/* Full Screen Video Player */}
       <VideoPlayer
         videoUrl={decodedVideoUrl}
         onTimeUpdate={setCurrentTime}

@@ -2,21 +2,45 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
-let isLoading = false; // Flag to prevent concurrent loading
+let isLoading = false;
 const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
 
-// This function loads FFmpeg and caches the instance for reuse.
+/**
+ * Terminates the current FFmpeg instance to allow for a clean restart.
+ */
+const terminateFFmpeg = async () => {
+    if (ffmpeg && ffmpeg.loaded) {
+        try {
+            await ffmpeg.terminate();
+        } catch (e) {
+            console.error("Failed to terminate FFmpeg instance:", e);
+        }
+    }
+    ffmpeg = null;
+    isLoading = false;
+};
+
+
+/**
+ * Loads and initializes the FFmpeg instance.
+ * Caches the instance for performance but can be reset if it fails.
+ */
 export const loadFFmpeg = async (progressCallback: (message: string) => void): Promise<FFmpeg> => {
-  // If the instance is already loaded and ready, return it immediately.
   if (ffmpeg && ffmpeg.loaded) {
     progressCallback('Converter is ready.');
     return ffmpeg;
   }
   
-  // If it's already in the process of loading, notify the user and wait.
   if (isLoading) {
     progressCallback('Waiting for converter to initialize...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => {
+      const interval = setInterval(() => {
+        if (!isLoading) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 100);
+    });
     return loadFFmpeg(progressCallback);
   }
 
@@ -24,18 +48,10 @@ export const loadFFmpeg = async (progressCallback: (message: string) => void): P
   ffmpeg = new FFmpeg();
 
   ffmpeg.on('log', ({ message }) => {
-    // Log all FFmpeg messages to the console for easier debugging.
     console.log("FFmpeg Log:", message);
   });
 
-  ffmpeg.on('progress', ({ progress }) => {
-    // Update the user on the conversion progress.
-    if (progress > 0 && progress <= 1) {
-      progressCallback(`Converting: ${Math.round(progress * 100)}%`);
-    }
-  });
-
-  progressCallback('Initializing converter for the first time (this may take a moment)...');
+  progressCallback('Initializing converter (this may take a moment)...');
   try {
     await ffmpeg.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
@@ -44,7 +60,7 @@ export const loadFFmpeg = async (progressCallback: (message: string) => void): P
     progressCallback('Converter initialized.');
   } catch (error) {
     console.error("Error loading FFmpeg:", error);
-    ffmpeg = null; // Reset on failure to allow a retry.
+    await terminateFFmpeg();
     throw new Error("Could not load converter. Please check your network connection.");
   } finally {
     isLoading = false;
@@ -53,38 +69,83 @@ export const loadFFmpeg = async (progressCallback: (message: string) => void): P
   return ffmpeg;
 };
 
+/**
+ * Downloads an HLS stream and converts it to an MP4 file.
+ * This version fetches the manifest first and provides it as a file to FFmpeg for increased reliability.
+ */
 export const downloadHlsAsMp4 = async (
   m3u8Url: string,
   fileName: string,
-  progressCallback: (message: string, isError?: boolean) => void
+  progressCallback: (message:string, isError?: boolean, progress?: number) => void
 ) => {
   let ffmpegInstance: FFmpeg;
-  try {
-    ffmpegInstance = await loadFFmpeg((msg) => progressCallback(msg, false));
-  } catch (error) {
-    progressCallback((error as Error).message, true);
-    return;
-  }
+  let logCallback: ({ message }: { message: string; }) => void;
+  const virtualManifestName = 'playlist.m3u8';
 
   try {
-    progressCallback('Starting download and conversion...');
+    ffmpegInstance = await loadFFmpeg((msg) => progressCallback(msg, false, 0));
+
+    // Proactively clean up virtual files from any previous runs
+    try {
+      const files = await ffmpegInstance.listDir('.');
+      if (files.find(f => f.name === fileName)) {
+        await ffmpegInstance.deleteFile(fileName);
+      }
+      if (files.find(f => f.name === virtualManifestName)) {
+        await ffmpegInstance.deleteFile(virtualManifestName);
+      }
+    } catch (e) {
+        console.warn("Pre-emptive file cleanup failed, continuing anyway.", e);
+    }
+
+    progressCallback('Fetching video information...', false, 0);
+    const response = await fetch(m3u8Url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch M3U8 manifest: ${response.statusText}`);
+    }
+    const manifest = await response.text();
     
-    // Execute the FFmpeg command to convert the HLS stream to MP4.
-    // The -bsf:a filter is crucial for making the audio compatible with the MP4 container.
+    // Write the manifest to the virtual file system. This is more reliable than passing a URL.
+    await ffmpegInstance.writeFile(virtualManifestName, manifest);
+
+    const totalSegments = (manifest.match(/\.ts/g) || []).length;
+    let processedSegments = 0;
+
+    if (totalSegments === 0) {
+      progressCallback('Could not determine video segments. Progress may not be shown accurately.', false);
+    }
+
+    logCallback = ({ message }) => {
+      // Improved regex to track progress by watching for segment downloads.
+      if (/Opening 'https?:\/\/[^']+\.ts' for reading/.exec(message)) {
+        processedSegments++;
+        if (totalSegments > 0) {
+          const progress = Math.round((processedSegments / totalSegments) * 100);
+          progressCallback(`Converting segment ${processedSegments} of ${totalSegments}...`, false, Math.min(progress, 99));
+        }
+      }
+    };
+    ffmpegInstance.on('log', logCallback);
+
+    progressCallback('Starting download and conversion...', false, 1);
+    
     await ffmpegInstance.exec([
-      '-i', m3u8Url, 
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
+      '-i', virtualManifestName, // Use the manifest file from the virtual FS
       '-c', 'copy', 
       '-bsf:a', 'aac_adtstoasc',
       fileName
     ]);
     
-    progressCallback('Finalizing file...');
+    progressCallback('Finalizing file...', false, 100);
     const data = await ffmpegInstance.readFile(fileName);
     
     const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
     
-    // Create a temporary link and click it to trigger the browser's download prompt.
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
@@ -93,18 +154,30 @@ export const downloadHlsAsMp4 = async (
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    progressCallback('Download started!');
+    progressCallback('Download started successfully!', false, 100);
     
   } catch (error) {
     console.error('Error during HLS download/conversion:', error);
-    const errorMessage = `Error: Conversion failed. This often happens due to server restrictions (CORS) on the video host. Please try a different video source. Check the browser console (F12) for detailed FFmpeg logs.`;
+    const errorMessage = `Error: Conversion failed. This can happen due to server restrictions or an unsupported format. Please try again.`;
     progressCallback(errorMessage, true);
+    
+    await terminateFFmpeg();
+    
     throw error;
   } finally {
-    // Always clean up the created file from FFmpeg's virtual file system to free up memory.
+    if (ffmpegInstance! && logCallback!) {
+        ffmpegInstance.off('log', logCallback);
+    }
+    // Final cleanup of virtual files
     try {
-      if ((await ffmpegInstance.listDir('.')).find(f => f.name === fileName)) {
-        await ffmpegInstance.deleteFile(fileName);
+      if (ffmpegInstance! && ffmpegInstance.loaded) {
+        const files = await ffmpegInstance.listDir('.');
+        if (files.find(f => f.name === fileName)) {
+            await ffmpegInstance.deleteFile(fileName);
+        }
+        if (files.find(f => f.name === virtualManifestName)) {
+            await ffmpegInstance.deleteFile(virtualManifestName);
+        }
       }
     } catch (e) {
       console.warn('Could not clean up virtual file after operation.', e);
