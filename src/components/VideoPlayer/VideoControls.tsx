@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { formatTime } from '../../utils/videoUtils';
+import { VideoType } from '../../types';
+import { Download, Loader } from 'lucide-react';
+import { downloadHlsAsMp4 } from '../../utils/downloader';
 
 interface VideoControlsProps {
   isVisible: boolean;
@@ -30,6 +33,8 @@ interface VideoControlsProps {
   hasActivePoll: boolean;
   onPlaybackSpeedChange: (speed: number) => void;
   onVideoQualityChange: (quality: string) => void;
+  videoType: VideoType;
+  videoUrl: string;
 }
 
 export function VideoControls({
@@ -60,7 +65,9 @@ export function VideoControls({
   doubtCount,
   hasActivePoll,
   onPlaybackSpeedChange,
-  onVideoQualityChange
+  onVideoQualityChange,
+  videoType,
+  videoUrl,
 }: VideoControlsProps) {
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
@@ -73,6 +80,10 @@ export function VideoControls({
   const [newNote, setNewNote] = useState('');
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [videoQuality, setVideoQuality] = useState('720p');
+
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState({ message: '', progress: 0, isError: false });
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = (parseFloat(e.target.value) / 100) * duration;
@@ -141,7 +152,42 @@ export function VideoControls({
     setShowSettings(false);
   };
 
+  const handleStartDownload = async (quality: string) => {
+    setIsDownloading(true);
+    setDownloadStatus({ message: 'Initializing...', progress: 0, isError: false });
+  
+    const qualityMap: { [key: string]: string } = {
+      '720p': '4',
+      '480p': '3',
+      '360p': '2',
+      '240p': '1',
+    };
+    const qualityIndex = qualityMap[quality];
+    const downloadUrl = videoUrl.replace(/index_(\d+)\.m3u8/, `index_${qualityIndex}.m3u8`);
+    const fileName = `video_${quality}.mp4`;
+  
+    try {
+      await downloadHlsAsMp4(downloadUrl, fileName, (message, isError = false) => {
+        const progressMatch = message.match(/Converting: (\d+)%/);
+        const progress = progressMatch ? parseInt(progressMatch[1], 10) : downloadStatus.progress;
+        setDownloadStatus({ message, progress, isError });
+      });
+      // Give a moment for the download to actually start before closing the modal
+      setTimeout(() => {
+        setIsDownloading(false);
+        setShowDownloadModal(false);
+      }, 3000);
+    } catch (error) {
+      // Error is handled in the callback, but we should reset the state here
+      // The modal will show the error message from the callback
+    }
+  };
+
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+  
+  const m3u8Qualities = ['720p', '480p', '360p', '240p'];
+  const youtubeQualities = ['auto', '720p', '480p', '360p', '240p'];
+  const qualityOptions = videoType === 'm3u8' ? m3u8Qualities : youtubeQualities;
 
   // Mobile Center Controls (only for mobile)
   const MobileCenterControls = () => {
@@ -181,7 +227,7 @@ export function VideoControls({
             className="bg-black/50 hover:bg-black/70 rounded-full p-4 transition-all duration-200 hover:scale-110"
             title="Skip forward 10s"
           >
-            <img src="/icons/10 sec-forward.svg" alt="Skip forward" className="w-10 h-10" />
+            <img src="/icons/10%20sec-forward.svg" alt="Skip forward" className="w-10 h-10" />
           </button>
         </div>
       </div>
@@ -231,7 +277,7 @@ export function VideoControls({
               }`}
               title="More options"
             >
-              <img src="/icons/three dot.svg" alt="More" className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} />
+              <img src="/icons/three%20dot.svg" alt="More" className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} />
             </button>
           </div>
         </div>
@@ -249,6 +295,20 @@ export function VideoControls({
           <div className={`absolute bg-gray-800 rounded-lg shadow-lg p-2 z-50 ${
             isMobile ? 'bottom-10 right-2' : 'bottom-12 right-4'
           }`}>
+            {videoType === 'm3u8' && (
+              <button
+                onClick={() => {
+                  setShowDownloadModal(true);
+                  setShowThreeDotMenu(false);
+                }}
+                className={`flex items-center space-x-2 w-full text-left text-white hover:bg-gray-700 rounded ${
+                  isMobile ? 'p-1.5 text-xs' : 'p-2 text-sm'
+                }`}
+              >
+                <Download className={isMobile ? 'w-4 h-4' : 'w-5 h-5'} />
+                <span>Download</span>
+              </button>
+            )}
             <button
               onClick={handleRatingClick}
               className={`flex items-center space-x-2 w-full text-white hover:bg-gray-700 rounded ${
@@ -264,9 +324,67 @@ export function VideoControls({
                 isMobile ? 'p-1.5 text-xs' : 'p-2 text-sm'
               }`}
             >
-              <img src="/icons/Report player.svg" alt="Report" className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} />
+              <img src="/icons/Report%20player.svg" alt="Report" className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} />
               <span>Report</span>
             </button>
+          </div>
+        )}
+
+        {/* Download Modal */}
+        {showDownloadModal && (
+          <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div className="bg-gray-800 text-white rounded-lg p-6 max-w-sm w-full mx-4">
+              <h3 className="text-lg font-semibold mb-4">Download Video</h3>
+              {!isDownloading ? (
+                <>
+                  <p className="text-sm text-gray-400 mb-4">Select quality to download:</p>
+                  <div className="space-y-2">
+                    {m3u8Qualities.map(q => (
+                      <button
+                        key={q}
+                        onClick={() => handleStartDownload(q)}
+                        className="w-full text-left p-3 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setShowDownloadModal(false)}
+                    className="w-full mt-4 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <div className="text-center">
+                  <p className={`mb-4 text-sm ${downloadStatus.isError ? 'text-red-400' : 'text-blue-300'}`}>
+                    {downloadStatus.message}
+                  </p>
+                  {!downloadStatus.isError && downloadStatus.progress === 0 && (
+                     <Loader className="animate-spin text-white mx-auto" size={32} />
+                  )}
+                  {!downloadStatus.isError && downloadStatus.progress > 0 && (
+                    <div className="w-full bg-gray-600 rounded-full h-2.5">
+                      <div
+                        className="bg-blue-500 h-2.5 rounded-full"
+                        style={{ width: `${downloadStatus.progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setIsDownloading(false);
+                      setShowDownloadModal(false);
+                      setDownloadStatus({ message: '', progress: 0, isError: false });
+                    }}
+                    className="w-full mt-4 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -407,12 +525,9 @@ export function VideoControls({
                     isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'
                   }`}
                 >
-                  <option value="auto">Auto</option>
-                  <option value="1080p">1080p</option>
-                  <option value="720p">720p</option>
-                  <option value="480p">480p</option>
-                  <option value="360p">360p</option>
-                  <option value="240p">240p</option>
+                  {qualityOptions.map((q) => (
+                    <option key={q} value={q}>{q}</option>
+                  ))}
                 </select>
               </div>
               <button
@@ -487,7 +602,7 @@ export function VideoControls({
                   className="hover:bg-white/20 rounded-full transition-all duration-200 hover:scale-110 p-1.5"
                   title="Skip forward 10s"
                 >
-                  <img src="/icons/10 sec-forward.svg" alt="Skip forward" className="w-8 h-8" />
+                  <img src="/icons/10%20sec-forward.svg" alt="Skip forward" className="w-8 h-8" />
                 </button>
               </>
             )}
@@ -503,7 +618,7 @@ export function VideoControls({
                 }`}
               >
                 <img 
-                  src={isMuted || volume === 0 ? "/icons/no sound.svg" : "/icons/sound.svg"} 
+                  src={isMuted || volume === 0 ? "/icons/no%20sound.svg" : "/icons/sound.svg"} 
                   alt={isMuted ? "Unmute" : "Mute"} 
                   className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} 
                 />
@@ -591,7 +706,7 @@ export function VideoControls({
               }`}
             >
               <img 
-                src={isFullscreen ? "/icons/exit full screen.svg" : "/icons/full screen.svg"} 
+                src={isFullscreen ? "/icons/exit%20full%20screen.svg" : "/icons/full%20screen.svg"} 
                 alt={isFullscreen ? "Exit fullscreen" : "Fullscreen"} 
                 className={isMobile ? 'w-6 h-6' : 'w-8 h-8'} 
               />

@@ -326,6 +326,8 @@ export function VideoPlayer({
           hasActivePoll={!!activePoll}
           onPlaybackSpeedChange={handlePlaybackSpeedChange}
           onVideoQualityChange={handleVideoQualityChange}
+          videoType={videoType}
+          videoUrl={videoUrl}
         />
 
         {/* Click overlay for YouTube videos */}

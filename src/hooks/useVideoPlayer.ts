@@ -16,7 +16,8 @@ export function useVideoPlayer(videoUrl: string) {
   const videoRef = useRef<HTMLVideoElement | HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const youtubePlayerRef = useRef<any>(null);
-  
+  const hlsRef = useRef<Hls | null>(null);
+
   const videoType: VideoType = detectVideoType(videoUrl);
   const youtubeId = videoType === 'youtube' ? extractYouTubeId(videoUrl) : null;
   const embedUrl = youtubeId ? getYouTubeEmbedUrl(youtubeId) : videoUrl;
@@ -180,26 +181,48 @@ export function useVideoPlayer(videoUrl: string) {
   const setVideoQuality = useCallback((quality: string) => {
     setVideoQualityState(quality);
     if (videoType === 'youtube' && youtubePlayerRef.current) {
-      // YouTube quality mapping
       const qualityMap: { [key: string]: string } = {
         '720p': 'hd720',
         '480p': 'large',
         '360p': 'medium',
         '240p': 'small',
-        '1080p': 'hd1080',
         'auto': 'default'
       };
-      const ytQuality = qualityMap[quality] || 'hd720';
+      const ytQuality = qualityMap[quality] || 'default';
       const availableQualities = youtubePlayerRef.current.getAvailableQualityLevels();
       if (availableQualities && availableQualities.includes(ytQuality)) {
         youtubePlayerRef.current.setPlaybackQuality(ytQuality);
-      } else if (quality === 'auto') {
-        youtubePlayerRef.current.setPlaybackQuality('default');
       }
+    } else if (videoType === 'm3u8' && videoRef.current instanceof HTMLVideoElement && hlsRef.current) {
+        const qualityMap: { [key: string]: string } = {
+            '720p': '4',
+            '480p': '3',
+            '360p': '2',
+            '240p': '1',
+        };
+        const qualityIndex = qualityMap[quality];
+        if (!qualityIndex) return;
+
+        const newUrl = videoUrl.replace(/index_(\d+)\.m3u8/, `index_${qualityIndex}.m3u8`);
+
+        if (newUrl !== hlsRef.current.url) {
+            const currentVideoTime = videoRef.current.currentTime;
+            const wasPlaying = !videoRef.current.paused;
+            const hls = hlsRef.current;
+            
+            hls.loadSource(newUrl);
+            hls.once(Hls.Events.LEVEL_LOADED, () => {
+                if(videoRef.current) {
+                    videoRef.current.currentTime = currentVideoTime;
+                    videoRef.current.playbackRate = playbackSpeed;
+                    if (wasPlaying) {
+                        videoRef.current.play();
+                    }
+                }
+            });
+        }
     }
-    // For regular videos, we can't change quality without different source URLs
-    // But we can at least store the preference
-  }, [videoType]);
+  }, [videoType, videoUrl, playbackSpeed]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current) {
@@ -266,7 +289,11 @@ export function useVideoPlayer(videoUrl: string) {
 
     // Setup HLS for m3u8 files
     if (videoType === 'm3u8' && Hls.isSupported()) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
       const hls = new Hls();
+      hlsRef.current = hls;
       hls.loadSource(videoUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -280,6 +307,9 @@ export function useVideoPlayer(videoUrl: string) {
       video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
     };
   }, [videoType, videoUrl, playbackSpeed]);
 
